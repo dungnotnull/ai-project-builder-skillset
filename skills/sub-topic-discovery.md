@@ -9,6 +9,18 @@ You are an AI research scout with deep familiarity with the open-source and acad
 
 ---
 
+## Interface Contract
+
+**Called by**: `skills/main.md` (Stage 1)
+**Calls next**: `skills/sub-repo-researcher.md` (outputs topic + keywords)
+
+**Inputs**:
+- `mode`: `"discover"` (no topic given) or `"validate"` (user supplied topic string)
+
+**Outputs**: JSON struct with topic, domain, novelty_score (0–10), motivation paragraph, keywords, evidence_urls, gap_signal
+
+---
+
 ## Workflow
 
 ### Mode A: Discover (no user topic)
@@ -41,10 +53,11 @@ For each candidate topic extracted from Step 1, score on:
   "mode": "discover",
   "topic": "<topic name>",
   "domain": "<AI subdomain>",
-  "novelty_score": <0-10>,
+  "novelty_score": 8,
   "motivation": "<3-5 sentence paragraph>",
   "keywords": ["kw1", "kw2", "kw3"],
-  "evidence_urls": ["url1", "url2"]
+  "evidence_urls": ["url1", "url2"],
+  "gap_signal": "strong"
 }
 ```
 
@@ -73,14 +86,24 @@ For each candidate topic extracted from Step 1, score on:
   "mode": "validate",
   "topic": "<user topic>",
   "domain": "<AI subdomain>",
-  "novelty_score": <0-10>,
-  "validation_result": "valid | marginal | invalid",
+  "novelty_score": 7,
+  "validation_result": "valid",
   "motivation": "<3-5 sentence paragraph>",
   "keywords": ["kw1", "kw2"],
   "evidence_urls": ["url1", "url2"],
-  "gap_signal": "strong | weak | none"
+  "gap_signal": "strong"
 }
 ```
+
+---
+
+## Error Handling
+
+| Condition | Behavior |
+|-----------|----------|
+| All 4 sources return empty | Retry once with `--since=monthly`; if still empty, return `{error: "no_signals", fallback: true}` |
+| No candidate scores ≥ 6 after expansion | Return `{error: "low_signal", suggestion: "try_specific_topic"}` |
+| WebSearch unavailable | Return `{error: "websearch_unavailable", alternative: "use_manual_topic_required"}` |
 
 ---
 
@@ -91,3 +114,4 @@ For each candidate topic extracted from Step 1, score on:
 - Output topic must have `novelty_score ≥ 6`
 - Motivation paragraph must cite ≥ 2 evidence URLs
 - `gap_signal` must be "strong" or "weak" (not "none") to proceed to repo research
+- If `error` key present in output, harness must NOT proceed to Stage 2

@@ -9,6 +9,15 @@ You are a senior open-source intelligence analyst specializing in the AI/ML ecos
 
 ---
 
+## Interface Contract
+
+**Called by**: `skills/main.md` (Stage 2)
+**Calls next**: `skills/sub-gap-analyzer.md` (outputs ranked repo list + fork candidates)
+**Inputs**: `{topic, keywords[]}` from sub-topic-discovery
+**Outputs**: JSON struct with `ranked_repos[]`, `fork_candidates[]`, feature/limitation lists
+
+---
+
 ## Workflow
 
 ### Step 1 — Multi-Query GitHub Search
@@ -44,6 +53,8 @@ Apply the scoring rubric:
 
 `quality_score = 0.3*stars + 0.3*recency + 0.2*freq + 0.2*docs`
 
+All scores are floats between 0.0 and 1.0 inclusive.
+
 ### Step 4 — Flag Fork Candidates
 A repo is a fork candidate if ALL of the following are true:
 - `quality_score ≥ 0.6`
@@ -63,18 +74,19 @@ This feature list feeds into sub-gap-analyzer.
 ```json
 {
   "topic": "<topic>",
-  "repos_evaluated": <N>,
+  "repos_evaluated": 10,
+  "early_stage_flag": false,
   "ranked_repos": [
     {
       "rank": 1,
       "name": "owner/repo-name",
       "url": "https://github.com/owner/repo-name",
-      "stars": <number>,
-      "last_commit": "YYYY-MM-DD",
-      "quality_score": <0.0-1.0>,
-      "fork_candidate": true|false,
-      "license": "MIT|Apache-2.0|...",
-      "features": ["feature1", "feature2", "feature3"],
+      "stars": 4200,
+      "last_commit": "2026-05-01",
+      "quality_score": 0.85,
+      "fork_candidate": true,
+      "license": "MIT",
+      "features": ["feature1", "feature2", "feature3", "feature4", "feature5"],
       "limitations": ["limit1", "limit2"]
     }
   ],
@@ -82,7 +94,16 @@ This feature list feeds into sub-gap-analyzer.
 }
 ```
 
-Ranked repos list includes ALL evaluated repos sorted by quality_score descending.
+---
+
+## Error Handling
+
+| Condition | Behavior |
+|-----------|----------|
+| < 5 repos found after broadened search | Set `early_stage_flag: true`; still output with whatever repos found; note in output |
+| WebSearch returns no results at all | Retry once with `--since=yearly`; if still empty, return `{error: "no_repos", early_stage_flag: true}` |
+| README fetch fails for a repo | Score that repo on available metadata only; set `docs=0.1` for that entry |
+| No fork candidates found | `fork_candidates: []` is acceptable — harness will build from scratch |
 
 ---
 
@@ -91,7 +112,7 @@ Ranked repos list includes ALL evaluated repos sorted by quality_score descendin
 - **WebFetch** — Fetch README and repo metadata
 
 ## Quality Gate
-- Minimum 5 repos evaluated and scored
-- At least 1 repo with quality_score ≥ 0.5 must exist (otherwise flag topic as very early-stage)
+- Minimum 5 repos evaluated and scored (unless `error` key set)
+- At least 1 repo with quality_score ≥ 0.5 must exist (otherwise set `early_stage_flag: true`)
 - Fork candidates list may be empty (acceptable if no permissive-licensed repos found)
-- Output JSON must include feature + limitation lists for top-5 repos
+- Output JSON must include feature + limitation lists for top-5 repos (or all repos if < 5)

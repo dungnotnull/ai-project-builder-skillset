@@ -9,15 +9,26 @@ You are a systematic literature reviewer with deep expertise in AI/ML research. 
 
 ---
 
+## Interface Contract
+
+**Called by**: `skills/main.md` (Stage 4)
+**Calls next**: `skills/sub-skill-packager.md` (outputs bibliography + synthesis)
+**Inputs**: `{topic, primary_gap}` from sub-gap-analyzer
+**Outputs**: JSON struct with bibliography[], paper_score, evidence_tier, synthesis paragraph
+
+---
+
 ## Evidence Hierarchy (applied to all citations)
 
-1. Systematic Review / Meta-Analysis (top)
-2. Randomized Controlled Experiment (AI: ablation study with statistical significance)
-3. Peer-reviewed Conference Paper (NeurIPS, ICML, ICLR, ACL, CVPR, EMNLP, AAAI)
-4. Peer-reviewed Workshop Paper / ArXiv with ≥100 citations
-5. ArXiv preprint (< 100 citations)
-6. Technical Blog / Official Documentation
-7. Blog post / Tutorial (lowest)
+| Tier | Source Type | Score |
+|------|-------------|-------|
+| 1 | Systematic Review / Meta-Analysis | 7 |
+| 2 | Peer-reviewed Conference Paper (NeurIPS, ICML, ICLR, ACL, CVPR, EMNLP, AAAI) | 6 |
+| 3 | Peer-reviewed Workshop Paper / ArXiv with ≥100 citations | 5 |
+| 4 | ArXiv preprint (< 100 citations) | 4 |
+| 5 | Technical Blog / Official Documentation | 3 |
+| 6 | Blog post / Tutorial | 2 |
+| 7 | Medium / Unverified source | 1 |
 
 ---
 
@@ -44,7 +55,7 @@ For each unique paper found (limit 20):
 ### Step 4 — Score and Rank Papers
 
 For each paper:
-- **Evidence Tier** (1–7 from hierarchy above): converts to score [7, 6, 5, 4, 3, 2, 1]
+- **Evidence Tier** (1–7 from hierarchy above): converts to tier_score [7, 6, 5, 4, 3, 2, 1]
 - **Recency** (0–3): published 2025–2026=3, 2024=2, 2023=1, older=0
 - **Relevance** (0–4): directly addresses primary gap=4, addresses topic broadly=2, tangential=0
 - **Citations** (0–3): >1000=3, 100–1000=2, 10–100=1, <10=0
@@ -62,27 +73,35 @@ For each selected paper, extract:
 - How this paper directly informs the gap implementation
 - Any code/repo associated with the paper (WebSearch: `"<paper title>" github`)
 
-### Step 7 — Output
+### Step 7 — Skill 7: Evidence Enforcement
+Invoke **Skill 7 Evidence Hierarchy** reasoning to validate each selected paper:
+- Confirm the venue classification is accurate (not miscategorized)
+- Cross-check citation count claims via WebSearch if possible
+- Flag any paper that is actually a tech blog but mislabeled as "peer-reviewed"
+
+### Step 8 — Output
 
 ```json
 {
   "topic": "<topic>",
   "primary_gap": "<gap problem statement>",
-  "papers_searched": <N>,
-  "papers_selected": <M>,
+  "papers_searched": 20,
+  "papers_selected": 5,
+  "papers_below_minimum": false,
   "bibliography": [
     {
       "title": "<paper title>",
       "authors": ["Author1", "Author2"],
       "year": 2025,
-      "venue": "NeurIPS|ICML|ArXiv|...",
+      "venue": "NeurIPS",
       "doi_or_url": "https://arxiv.org/abs/...",
       "evidence_tier": 3,
+      "evidence_tier_label": "Peer-reviewed Conference Paper",
       "paper_score": 12,
       "abstract_snippet": "<first 100 words>",
       "key_methods": ["method1", "method2"],
       "relevance_note": "<how this paper informs the gap implementation>",
-      "associated_repo": "https://github.com/..." | null
+      "associated_repo": "https://github.com/..." 
     }
   ],
   "synthesis": "<3-5 sentence summary of what the research says about how to address the gap>"
@@ -91,12 +110,25 @@ For each selected paper, extract:
 
 ---
 
+## Error Handling
+
+| Condition | Behavior |
+|-----------|----------|
+| Fewer than 5 qualifying papers after broadening | Set `papers_below_minimum: true`; include all found papers (minimum 3); flag in output |
+| All papers are ArXiv preprints with < 100 citations | Still include them but note `evidence_quality: "low"` in synthesis |
+| WebSearch unavailable for one query | Note `query_N_failed: true`; continue with other queries |
+| Paper URL 404s on fetch | Skip that paper; note `fetch_errors: [url]` in output |
+| Associated repo search returns nothing | Set `associated_repo: null` for that entry |
+
+---
+
 ## Tools
 - **WebSearch** — paper discovery on ArXiv, Semantic Scholar, Google Scholar, HuggingFace
 - **WebFetch** — fetch abstract pages for paper details
 
 ## Quality Gate
-- Minimum 5 papers in bibliography with `paper_score ≥ 8`
-- At least 2 papers from peer-reviewed venues (Evidence Tier ≤ 3)
+- Minimum 5 papers in bibliography with `paper_score ≥ 8` (or `papers_below_minimum: true` with ≥ 3 papers)
+- At least 2 papers from peer-reviewed venues (Evidence Tier ≤ 3) or same flag
 - All papers have valid DOI or ArXiv URL
 - Synthesis paragraph present and ≥ 3 sentences
+- Skill 7 evidence hierarchy validation applied to all papers

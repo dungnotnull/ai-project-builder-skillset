@@ -377,6 +377,40 @@ def run(sources_filter: str = "all", dry_run: bool = False) -> None:
         print("[DRY RUN] No files were modified.")
 
 
+def validate_brain() -> None:
+    """Validate brain file integrity and report stats."""
+    if not BRAIN_FILE.exists():
+        print("[ERROR] SECOND-KNOWLEDGE-BRAIN.md not found.")
+        sys.exit(1)
+
+    content = BRAIN_FILE.read_text(encoding="utf-8")
+    existing = load_existing_hashes(BRAIN_FILE)
+
+    required_sections = [
+        "Core Concepts",
+        "Key Research Papers",
+        "State-of-the-Art Methods",
+        "Authoritative Data Sources",
+        "Analytical Frameworks",
+        "Self-Update Protocol",
+        "Knowledge Update Log",
+    ]
+
+    missing = [s for s in required_sections if s not in content]
+    if missing:
+        print(f"[WARN] Missing sections: {', '.join(missing)}")
+    else:
+        print("[OK] All required sections present.")
+
+    print(f"[STATS] Total unique entries: {len(existing)}")
+    print(f"[STATS] File size: {len(content)} bytes")
+    print(f"[STATS] Lines: {content.count(chr(10))}")
+
+    if missing:
+        sys.exit(1)
+    print("[DONE] Brain file validation complete — integrity OK.")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -391,6 +425,14 @@ if __name__ == "__main__":
         default="all",
         help="Comma-separated list of sources to crawl (default: all)",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate brain file integrity and report stats without crawling",
+    )
     args = parser.parse_args()
 
-    run(sources_filter=args.sources, dry_run=args.dry_run)
+    if args.validate:
+        validate_brain()
+    else:
+        run(sources_filter=args.sources, dry_run=args.dry_run)
